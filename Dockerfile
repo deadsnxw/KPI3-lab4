@@ -1,29 +1,21 @@
-# Use the official Golang image as a base image
-FROM golang:1.22 as builder
+# Build stage
+FROM golang:1.22 as build
 
-# Set the Current Working Directory inside the container
-WORKDIR /app
-
-# Copy go mod and sum files
-COPY go.mod go.sum ./
-
-# Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
-RUN go mod download
-
-# Copy the source from the current directory to the Working Directory inside the container
+WORKDIR /go/src/practice-4
 COPY . .
 
-# Build the Go app
-RUN go build -o main .
+RUN go test ./...
+ENV CGO_ENABLED=0
+RUN go install ./cmd/...
 
-# Start a new stage from scratch
 FROM alpine:latest
+WORKDIR /opt/practice-4
 
-# Set the Current Working Directory inside the container
-WORKDIR /root/
+COPY entry.sh /opt/practice-4/
+RUN dos2unix /opt/practice-4/entry.sh && chmod +x /opt/practice-4/entry.sh
 
-# Copy the Pre-built binary file from the previous stage
-COPY --from=builder /app/main .
+COPY --from=build /go/bin/* /opt/practice-4
 
-# Command to run the executable
-CMD ["./main"]
+RUN ls -l /opt/practice-4
+ENTRYPOINT ["/opt/practice-4/entry.sh"]
+CMD ["server"]
