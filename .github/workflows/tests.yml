@@ -1,40 +1,30 @@
-name: CI for Load Balancer
+name: Build Docker and Tests
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
     branches:
-      - main
+      - '*'
+  push:
+    branches: [ main ]
 
 jobs:
-  test:
+  build-and-test:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
-
-    - name: Cache Docker layers
-      uses: actions/cache@v2
-      with:
-        path: /tmp/.buildx-cache
-        key: ${{ runner.os }}-buildx-${{ github.sha }}
-        restore-keys: |
-          ${{ runner.os }}-buildx-
-
-    - name: Build Docker image
-      run: docker build -t balancer:latest .
-
-    - name: Run unit tests inside Docker container
-      run: docker run --rm balancer:latest /usr/local/go/bin/go test ./... -v
-
-    - name: Run integration tests inside Docker container
-      run: docker run --rm -e INTEGRATION_TEST=1 balancer:latest /usr/local/go/bin/go test ./integration -v
-
-    - name: Run benchmarks inside Docker container
-      run: docker run --rm -e INTEGRATION_TEST=1 balancer:latest /usr/local/go/bin/go test ./integration -bench=. -benchtime=10x -v
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.22
+      - name: Install packages
+        run: |
+          go get -u ./...
+          go mod download
+          go mod tidy
+      - name: Build Go
+        run: go build ./cmd/stats/main.go
+      - name: Build Docker and run Unit tests
+        run: docker compose build
+      - name: Running integration test
+        run: docker-compose -f docker-compose.yaml -f docker-compose.test.yaml up --exit-code-from test
