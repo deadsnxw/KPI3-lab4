@@ -13,20 +13,25 @@ import (
 	"github.com/roman-mazur/architecture-practice-4-template/signal"
 )
 
-var (
-	port = flag.Int("port", 8090, "load balancer port")
-	timeoutSec = flag.Int("timeout-sec", 3, "request timeout time in seconds")
-	https = flag.Bool("https", false, "whether backends support HTTPs")
+// Server represents a backend server with a name and a request counter.
+type Server struct {
+	name    string
+	counter int
+}
 
+var (
+	port         = flag.Int("port", 8090, "load balancer port")
+	timeoutSec   = flag.Int("timeout-sec", 3, "request timeout time in seconds")
+	https        = flag.Bool("https", false, "whether backends support HTTPs")
 	traceEnabled = flag.Bool("trace", false, "whether to include tracing information into responses")
 )
 
 var (
-	timeout = time.Duration(*timeoutSec) * time.Second
-	serversPool = []string{
-		"server1:8080",
-		"server2:8080",
-		"server3:8080",
+	timeout     = time.Duration(*timeoutSec) * time.Second
+	serversPool = []Server{
+		{name: "server1:8080", counter: 0},
+		{name: "server2:8080", counter: 0},
+		{name: "server3:8080", counter: 0},
 	}
 )
 
@@ -84,22 +89,35 @@ func forward(dst string, rw http.ResponseWriter, r *http.Request) error {
 	}
 }
 
+func findLeastLoadedServer() *Server {
+	var leastLoaded *Server
+	for i := range serversPool {
+		if leastLoaded == nil || serversPool[i].counter < leastLoaded.counter {
+			leastLoaded = &serversPool[i]
+		}
+	}
+	return leastLoaded
+}
+
 func main() {
 	flag.Parse()
 
-	// TODO: Використовуйте дані про стан сервреа, щоб підтримувати список тих серверів, яким можна відправляти ззапит.
 	for _, server := range serversPool {
 		server := server
 		go func() {
 			for range time.Tick(10 * time.Second) {
-				log.Println(server, health(server))
+				log.Println(server.name, health(server.name))
 			}
 		}()
 	}
 
 	frontend := httptools.CreateServer(*port, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		// TODO: Рееалізуйте свій алгоритм балансувальника.
-		forward(serversPool[0], rw, r)
+		leastLoadedServer := findLeastLoadedServer()
+		leastLoadedServer.counter++
+		err := forward(leastLoadedServer.name, rw, r)
+		if err != nil {
+			leastLoadedServer.counter--
+		}
 	}))
 
 	log.Println("Starting load balancer...")
